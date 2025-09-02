@@ -5,17 +5,17 @@
 
 #### 文件说明
 .
-├── audio.opus            //原始opus编码数据
-├── cfg.h                 //用于对接sonud_app 的配置文件
-├── LF76.c                //主要程序，实现将opus数据发生到云端进行处理
-├── opus_data.h           //audio.opus解析出来的数组格式数据
-├── opus_recorder        //录音并将pcm转为opus编码的数据
-├── opus_recorder.c     //录音并将pcm转为opus编码的数据
-├── opus_to_array       //转换数据为opus的数组数据
-├── opus_to_array.c    //转换数据为opus的数组数据
-├── sound_app         //用于测试的udp传输音频数据程序
-├── text.c            //测试记录
-└── web               //主程序的可执行程序
+├── audio.opus            //原始opus编码数据  
+├── cfg.h                 //用于对接sonud_app 的配置文件  
+├── LF76.c                //主要程序，实现将opus数据发生到云端进行处理  
+├── opus_data.h           //audio.opus解析出来的数组格式数据  
+├── opus_recorder        //录音并将pcm转为opus编码的数据  
+├── opus_recorder.c     //录音并将pcm转为opus编码的数据 
+├── opus_to_array       //转换数据为opus的数组数据  
+├── opus_to_array.c    //转换数据为opus的数组数据 
+├── sound_app         //用于测试的udp传输音频数据程序 
+├── text.c            //测试记录  
+└── web               //主程序的可执行程序  
 
 编译方式
 
