@@ -165,3 +165,6 @@ int main() {
 
     return 0;
 }
+
+
+//gcc -o opus_recorder opus_recorder.c -lasound -lopus
