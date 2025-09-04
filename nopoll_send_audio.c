@@ -15,15 +15,12 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #endif
-#include "cfg.h"
 #include "opus_data.h"
 
+//#define OTA_URL "http://114.66.50.145:8003/xiaozhi/ota/"
 #define OTA_URL "https://xrobo.qiniuapi.com/v1/ota/"
-#define MAC "00:0c:29:34:45:0f"
+#define MAC "d4:06:06:b6:a9:fb"
 #define UUID "webai_test"
-#define AUDIO_PORT_DOWN 12345  // 假设的下行音频端口
-
-char session_id[64] = "";
 
 static char g_session_id[128] = {0};
 static char g_ws_token[512] = {0};
@@ -34,131 +31,92 @@ static noPollCtx *g_nopoll_ctx = NULL;
 static int g_connected = 0;
 static int g_shaked = 0;
 
-/* 音频发送队列：从内存数组读取数据，排队后由WS二进制发送 */
-typedef struct audio_node {
-    size_t len;
-    unsigned char *data;
-    struct audio_node *next;
-} audio_node_t;
-
-static audio_node_t *g_audio_head = NULL;
-static audio_node_t *g_audio_tail = NULL;
-static pthread_mutex_t g_audio_mtx = PTHREAD_MUTEX_INITIALIZER;
 static volatile int g_listen_active = 0;
 static volatile int g_audio_thread_ready = 0;
-static size_t g_audio_queue_bytes = 0;
-static const size_t k_audio_queue_bytes_limit = 1024 * 1024;
 
-static void audio_clear_queue(void) {
-    pthread_mutex_lock(&g_audio_mtx);
-    audio_node_t *node = g_audio_head;
-    g_audio_head = g_audio_tail = NULL;
-    g_audio_queue_bytes = 0;
-    pthread_mutex_unlock(&g_audio_mtx);
-    while (node) {
-        audio_node_t *next = node->next;
-        free(node->data);
-        free(node);
-        node = next;
-    }
-}
-
-static void audio_enqueue(const unsigned char *data, size_t len) {
-    if (!data || len == 0) return;
-    audio_node_t *node = (audio_node_t*)malloc(sizeof(audio_node_t));
-    if (!node) return;
-    node->data = (unsigned char*)malloc(len);
-    if (!node->data) { free(node); return; }
-    memcpy(node->data, data, len);
-    node->len = len;
-    node->next = NULL;
-    
-    pthread_mutex_lock(&g_audio_mtx);
-    if (g_audio_queue_bytes + len > k_audio_queue_bytes_limit) {
-        pthread_mutex_unlock(&g_audio_mtx);
-        free(node->data);
-        free(node);
-        return;
-    }
-    
-    if (g_audio_tail) {
-        g_audio_tail->next = node;
-        g_audio_tail = node;
-    } else {
-        g_audio_head = g_audio_tail = node;
-    }
-    g_audio_queue_bytes += len;
-    pthread_mutex_unlock(&g_audio_mtx);
-}
-
-static size_t audio_dequeue(unsigned char *out, size_t maxlen) {
-    pthread_mutex_lock(&g_audio_mtx);
-    audio_node_t *node = g_audio_head;
-    if (!node) { pthread_mutex_unlock(&g_audio_mtx); return 0; }
-    g_audio_head = node->next;
-    if (!g_audio_head) g_audio_tail = NULL;
-    pthread_mutex_unlock(&g_audio_mtx);
-    
-    size_t n = 0;
-    if (out && maxlen) {
-        n = node->len <= maxlen ? node->len : maxlen;
-        memcpy(out, node->data, n);
-    }
-    
-    pthread_mutex_lock(&g_audio_mtx);
-    if (g_audio_queue_bytes >= node->len) 
-        g_audio_queue_bytes -= node->len; 
-    else 
-        g_audio_queue_bytes = 0;
-    pthread_mutex_unlock(&g_audio_mtx);
-    
-    free(node->data);
-    free(node);
-    return n;
-}
 
 // 修改 opus_memory_reader_thread 函数
 static void *opus_memory_reader_thread(void *arg) {
-    // 等待WebSocket连接就绪
-    printf("等待WebSocket连接就绪...\n");
-    while (!g_connected || !g_shaked) {
-        usleep(100000);
+
+    sleep(2);
+    while(1){
+        nopoll_loop_wait(g_nopoll_ctx, 1000);
     }
-    
-    printf("Opus音频数据大小: %u字节\n", opus_audio_data_size);
-    
-    // 跳过Opus文件头（通常是前19个字节）
-    size_t offset = 19;
+
+}
+
+// 修改 opus_memory_reader_thread 函数
+static void opus_memory_reader_send_test(void)
+ {
     int frame_count = 0;
-    
+    int result = 0;
+    uint8_t len_bytes[4];
     g_audio_thread_ready = 1;
-    
-    // 先发送start命令
-    if (g_connected && g_shaked && g_nopoll_conn && g_session_id[0]) {
-        char start_buf[256];
-        int n = snprintf(start_buf, sizeof(start_buf),
-            "{\"session_id\":\"%s\",\"type\":\"listen\",\"state\":\"start\",\"mode\":\"manual\"}", g_session_id);
-        nopoll_conn_send_text(g_nopoll_conn, start_buf, n);
-        g_listen_active = 1;
-        printf("已发送start命令，开始发送opus音频数据\n");
-        
-        // 等待一段时间确保start命令生效
-        sleep(1);
-    }
-    
+    int tries = 0;
+
     printf("开始解析并发送opus音频数据...\n");
-    
-    // 直接发送整个音频数据（跳过文件头）
-    if (offset < opus_audio_data_size) {
-        size_t data_size = opus_audio_data_size - offset;
-        audio_enqueue(&opus_audio_data[offset], data_size);
-        printf("已跳过文件头，发送音频数据: %zu字节\n", data_size);
-        
-        // 通知主线程有数据可发送
-        if (g_nopoll_conn) {
-            // 这里需要一种方式通知主线程有数据可写
-        }
+     printf("listen\n");
+     char start_buf[256];
+    int n = snprintf(start_buf, sizeof(start_buf),
+        "{\"session_id\":\"%s\",\"type\":\"listen\",\"state\":\"start\",\"mode\":\"manual\"}", g_session_id);
+    int ret = nopoll_conn_send_text(g_nopoll_conn, start_buf, n);
+    if (ret > 0) {
+        printf("listen, 发送成功 %d\n", ret);
+    } else if (ret == -2) {
+        printf("listen, 需要重试发送\n");
+    } else {
+        printf("listen, 发送失败，错误码: %d\n", ret);
     }
+    
+    frame_count = 0;
+    size_t offset = 0;
+    while (offset < opus_audio_data_size) {
+        // 读取帧长度（4字节，小端格式）
+        if (offset + sizeof(int32_t) > opus_audio_data_size) {
+            fprintf(stderr, "数据不完整，无法读取帧长度\n");
+            break;
+        }
+
+        // 正确处理小端格式的帧长度解析
+        memcpy(len_bytes, &opus_audio_data[offset], 4);
+        int32_t opus_len = (len_bytes[0] << 0) | 
+                        (len_bytes[1] << 8) | 
+                        (len_bytes[2] << 16) | 
+                        (len_bytes[3] << 24);
+        offset += sizeof(int32_t);
+
+        // 增加帧长度合理性检查
+        if (opus_len <= 0 || opus_len > 1024 * 1024) {  // 限制最大帧长为1MB
+            fprintf(stderr, "无效的帧长度: %d字节，跳过该帧\n", opus_len);
+            continue;
+        }
+
+        printf("开始发送第%d帧, 长度: %d字节,\n", frame_count + 1, opus_len);
+
+        tries = 0;
+        // 发送当前帧的音频数据
+        int result = nopoll_conn_send_binary(g_nopoll_conn, 
+                                            (const char *)&opus_audio_data[offset], 
+                                            opus_len);
+        if (result > 0) {
+            printf("成功发送第%d帧, 长度: %d字节, 总进度: %zu/%u字节\n", 
+                frame_count + 1, result, offset + opus_len, opus_audio_data_size);
+                
+        } else{
+
+            printf("第%d帧发送阻塞，需要重试\n", frame_count + 1);
+            offset -= sizeof(int32_t);
+            usleep(1000);
+            continue; 
+        }
+        
+        offset += opus_len;
+        frame_count++;
+        // 模拟实时发送的间隔（60ms，符合Opus帧时长）
+        usleep(60000);
+    }
+
+    printf("音频数据发送完成，共发送%d帧，总大小: %zu/%u字节\n", frame_count, offset, opus_audio_data_size);
     
     // 等待一段时间让服务器处理数据
     sleep(2);
@@ -172,32 +130,56 @@ static void *opus_memory_reader_thread(void *arg) {
         g_listen_active = 0;
         printf("已发送stop命令（音频数据发送完成）\n");
     }
-    
-    return NULL;
+    //  noPollMsg *msg = NULL;
+    // if (msg != NULL) {
+    //     const char *content = (const char *)nopoll_msg_get_payload(msg);
+    //     size_t msg_size = nopoll_msg_get_payload_size(msg);
+    //     printf("< %s\n", content);  
+    //     nopoll_msg_unref(msg);
+    //     return 0;
+    // } else {
+    //     printf("No message received after ms\n");
+    //     return -1;
+    // }
+
 }
 
-/* 下行音频处理 */
-static int g_udp_send_fd = -1;
-static struct sockaddr_in g_udp_send_addr;
 
-static int init_udp_sender(void) {
-    g_udp_send_fd = socket(AF_INET, SOCK_DGRAM, 0);
-    if (g_udp_send_fd < 0) {
-        perror("udp sender socket");
+static int wait_and_process_websocket_message(noPollConn *conn, int timeout_ms) {
+    if (conn == NULL) {
+        printf("Connection is NULL\n");
         return -1;
     }
-    memset(&g_udp_send_addr, 0, sizeof(g_udp_send_addr));
-    g_udp_send_addr.sin_family = AF_INET;
-    g_udp_send_addr.sin_port = htons(AUDIO_PORT_DOWN);
-    inet_pton(AF_INET, "127.0.0.1", &g_udp_send_addr.sin_addr);
-    return 0;
+    
+    noPollMsg *msg = NULL;
+    int attempts = 0;
+    const int max_attempts = timeout_ms / 10; // 每10ms尝试一次
+    
+    while (msg == NULL && attempts < max_attempts) {
+        msg = nopoll_conn_get_msg(conn);
+        if (msg == NULL) {
+            usleep(10000); // 等待10ms
+            attempts++;
+        }
+    }
+    
+    if (msg != NULL) {
+        const char *content = (const char *)nopoll_msg_get_payload(msg);
+        size_t msg_size = nopoll_msg_get_payload_size(msg);
+        printf("< %s\n", content);  
+        nopoll_msg_unref(msg);
+        return 0;
+    } else {
+        printf("No message received after %dms\n", timeout_ms);
+        return -1;
+    }
 }
 
-static void audio_udp_senddownlink(const void *data, size_t len) {
-    if (g_udp_send_fd < 0 || !data || len == 0) return;
-    sendto(g_udp_send_fd, (const char*)data, (int)len, 0,
-           (struct sockaddr*)&g_udp_send_addr, sizeof(g_udp_send_addr));
-}
+// static void *opus_memory_reader_thread(void *arg) {
+//     while(1){
+//         wait_and_process_websocket_message(g_nopoll_conn,5000);
+//     }
+// }
 
 struct memory_struct {
     char *memory;
@@ -303,10 +285,12 @@ static int activate_and_fetch_ws() {
     headers = curl_slist_append(headers, "Activation-Version: 2");
 
     curl_easy_setopt(curl, CURLOPT_URL, OTA_URL);
+    curl_easy_setopt(curl, CURLOPT_POST, 1);
     curl_easy_setopt(curl, CURLOPT_POSTFIELDS, post_data);
     curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_memory_callback);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&chunk);
+    //curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)post_data);
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, 30L);
@@ -319,6 +303,8 @@ static int activate_and_fetch_ws() {
         free(chunk.memory);
         return -1;
     }
+
+    printf("请求回复内容如下：\r\n%s\r\n",chunk.memory);
 
     int ret = -1;
     json_error_t jerr;
@@ -378,7 +364,7 @@ static void ws_on_message(noPollCtx *ctx, noPollConn *conn, noPollMsg *msg, void
     if (nopoll_msg_is_final(msg)) {
         const char *content = (const char *)nopoll_msg_get_payload(msg);
         size_t len = nopoll_msg_get_payload_size(msg);
-        printf("收到文本消息: %.*s\n", (int)len, content);
+        //printf("收到文本消息: %.*s\n", (int)len, content);
         
         json_error_t jerr;
         json_t *root = json_loadb(content, len, 0, &jerr);
@@ -404,25 +390,27 @@ static void ws_on_message(noPollCtx *ctx, noPollConn *conn, noPollMsg *msg, void
                     const char *emotion = json_string_value(json_object_get(root, "emotion"));
                     printf("大模型回复: %s (情绪: %s)\n", text ? text : "", emotion ? emotion : "");
                 } 
-                else if (!strcmp(type, "tts")) {
+                else if (!strcmp(type, "tts") ) {
                     const char *state = json_string_value(json_object_get(root, "state"));
                     const char *text = json_string_value(json_object_get(root, "text"));
+
                     printf("语音合成 %s: %s\n", state ? state : "", text ? text : "");
-                }
+                }else if (!strcmp(type, "llm")) {
+                    const char *text = json_string_value(json_object_get(root, "text"));
+                    const char *emotion = json_string_value(json_object_get(root, "emotion"));
+                    printf("大模型回复: %s (情绪: %s)\n", text ? text : "", emotion ? emotion : "");
+                } 
                 else {
                     printf("未知消息类型: %s\n", type);
                 }
             }
             json_decref(root);
         } else {
-            printf("JSON解析失败: %s\n", jerr.text);
+            printf("收到二进制音频数据，长度: %zu字节\n", len);
+            //printf("JSON解析失败: %s\n", jerr.text);
         }
     } else {
-        // 处理二进制消息（下行音频）
-        const void *data = nopoll_msg_get_payload(msg);
-        size_t len = nopoll_msg_get_payload_size(msg);
-        printf("收到二进制音频数据，长度: %zu字节\n", len);
-        if (len > 0) audio_udp_senddownlink(data, len);
+        printf("nopoll_msg_is_final faild!\n");
     }
 }
 
@@ -433,8 +421,13 @@ struct ws_thread_args {
     char path[256];
 };
 
+
+
+
 // 修改 websocket_thread 函数，移除主动轮询部分
 static void *websocket_thread(void *arg) {
+
+    int ret=0;
     struct ws_thread_args *cfg = (struct ws_thread_args *)arg;
     g_nopoll_ctx = nopoll_ctx_new();
     if (!g_nopoll_ctx) {
@@ -443,7 +436,7 @@ static void *websocket_thread(void *arg) {
         return NULL;
     }
 
-    noPollConnOpts *opts = nopoll_conn_opts_new();
+    noPollConnOpts  *opts = nopoll_conn_opts_new();
     if (!opts) {
         printf("无法创建连接选项\n");
         nopoll_ctx_unref(g_nopoll_ctx);
@@ -451,29 +444,55 @@ static void *websocket_thread(void *arg) {
         return NULL;
     }
 
+     printf("g_ws_token:%s \n", g_ws_token);
+
     // 设置额外请求头
     char extra_headers[1024];
     snprintf(extra_headers, sizeof(extra_headers),
+             "\r\nPragma: no-cache\r\n"
+             "Cache-Control: no-cache\r\n"
              "Authorization: Bearer %s\r\n"
              "Device-Id: %s\r\n"
              "Client-Id: %s\r\n"
-             "Protocol-Version: 1\r\n",
+             "Protocol-Version: 1",
              g_ws_token, MAC, UUID);
     nopoll_conn_opts_set_extra_headers(opts, extra_headers);
+    
+    //for(int i=0;i<)
 
     // 连接到 WebSocket
-    const char *host = "xrobo-io.qiniuapi.com";
-    const char *port = "443";
-    const char *path = "/v1/ws/";
-    g_nopoll_conn = nopoll_conn_tls_new(g_nopoll_ctx, opts, host, port, NULL, path, NULL, NULL);
-    if (!g_nopoll_conn) {
+    // const char *host = "xrobo-io.qiniuapi.com";
+    // const char *port = "80";
+    // const char *path = "/v1/ws/";
+    // const char *host = "192.168.20.90";
+    // const char *port = "80";
+
+    const char *host = cfg->host;
+    const char *port = cfg->port;
+    const char *path = cfg->path;
+
+    printf("正在连接：host=%s,port=%s,path=%s\r\n",host,port,path);
+
+    g_nopoll_conn = nopoll_conn_new_opts (g_nopoll_ctx,
+				   opts,
+				   host, 
+				   port, 
+				   "xrobo-io.qiniuapi.com",
+				   path, 
+				   "voice-client",
+				   "http://");
+
+
+    //g_nopoll_conn = nopoll_conn_new(g_nopoll_ctx, host, port, host, NULL, NULL,NULL);
+    if (g_nopoll_conn == NULL) {
         printf("WebSocket connection created unsuccessfully\n");
         nopoll_conn_opts_free(opts);
         nopoll_ctx_unref(g_nopoll_ctx);
         free(cfg);
         return NULL;
     }
-
+    printf("发送websocket连接完成\n");
+    
     // 等待连接就绪
     if (!nopoll_conn_wait_until_connection_ready(g_nopoll_conn, 10)) {
         printf("WebSocket connection not ready within timeout\n");
@@ -502,41 +521,30 @@ static void *websocket_thread(void *arg) {
     // 设置消息回调 - 这是关键，所有消息将通过回调处理
     nopoll_conn_set_on_msg(g_nopoll_conn, ws_on_message, NULL);
 
+
+    printf("发送hello消息\n");
     // 发送hello消息
     const char *hello_msg = "{\"type\":\"hello\",\"version\":1,\"transport\":\"websocket\",\"audio_params\":{\"format\":\"opus\",\"sample_rate\":16000,\"channels\":1,\"frame_duration\":60}}";
-    nopoll_conn_send_text(g_nopoll_conn, hello_msg, strlen(hello_msg));
-    printf("已发送 hello: %s\n", hello_msg);
-
-    // 主循环处理消息和发送音频数据
-    while (1) {
-       nopoll_loop_wait(g_nopoll_ctx,1000);
-
-        // 发送队列中的音频数据
-        if (g_listen_active && g_nopoll_conn) {
-            pthread_mutex_lock(&g_audio_mtx);
-            int has_data = (g_audio_head != NULL);
-            pthread_mutex_unlock(&g_audio_mtx);
-            
-            if (has_data) {
-                unsigned char wbuf[4096];
-                size_t nbin = audio_dequeue(wbuf, sizeof(wbuf));
-                if (nbin > 0) {
-                    nopoll_conn_send_binary(g_nopoll_conn, wbuf, nbin);
-                    printf("发送音频帧，长度: %zu字节\n", nbin);
-                }
-            }
-        }
-
-        usleep(10000); // 10ms延迟，减少CPU占用
+    ret = nopoll_conn_send_text(g_nopoll_conn, hello_msg, strlen(hello_msg));
+    if(ret>0){
+        printf("hello, 已发送 hello: %s\n", hello_msg);
+    }else {
+        printf("hello, 发送失败\n");
     }
 
-    // 清理资源（实际不会执行到这里）
-    nopoll_conn_close(g_nopoll_conn);
-    nopoll_conn_opts_free(opts);
-    nopoll_ctx_unref(g_nopoll_ctx);
-    free(cfg);
+    opus_memory_reader_send_test();
+
+    while (1) {
+       sleep(3); 
+    }
     return NULL;
 }
+
+// static void *webmsg_loop_thread(void *arg) {
+//     while (1) {
+//        nopoll_loop_wait(g_nopoll_ctx,1000);
+//     }
+// }
 
 int main(void) {
     printf("开始设备激活流程...\n");
@@ -570,45 +578,16 @@ int main(void) {
         return 1;
     }
 
-    // 启动opus内存数据读取线程
+    // // 启动opus内存数据读取线程
     pthread_t opus_tid;
     if (pthread_create(&opus_tid, NULL, opus_memory_reader_thread, NULL) != 0) {
         perror("创建opus数据读取线程失败");
         return 1;
     }
-
-    if (init_udp_sender() != 0) {
-        fprintf(stderr, "UDP下行发送通道初始化失败\n");
-    }
-
     // 主循环等待处理完成
     printf("等待处理完成...\n");
     while (1) {
         sleep(1);
-        
-        // 如果数据发送完成且一段时间没有活动，退出
-        static int idle_count = 0;
-        if (!g_listen_active) {
-            idle_count++;
-            if (idle_count > 40) {
-                printf("长时间无活动，退出程序\n");
-                break;
-            }
-        } else {
-            idle_count = 0; // 重置计数器
-        }
-    }
-    
-    // 清理工作
-    audio_clear_queue();
-    if (g_nopoll_conn) {
-        nopoll_conn_close(g_nopoll_conn);
-    }
-    if (g_nopoll_ctx) {
-        nopoll_ctx_unref(g_nopoll_ctx);
-    }
-    if (g_udp_send_fd != -1) {
-        close(g_udp_send_fd);
     }
     
     return 0;

@@ -78,9 +78,9 @@ PS D:\DIY\BF2_AI\xiaozhi-python> python.exe .\qiniu_xz.py
 ota请求地址：https://xrobo.qiniuapi.com/v1/ota/   POST /api/ota/
 1，连续发送两次ota请求，第一次获取到激活码activation code：{"server_time":{"timestamp":1755659709282,"timeZone":"Asia/Shanghai","timezone_offset":480},"activation":{"code":"804971","message":"https://xrobo.qiniu.com\n804971","challenge":"00:0c:29:34:45:0f"},"firmware":{"version":"1.0.0","url":"https://xrobo.qiniuapi.com/v1/ota/INVALID_FIRMWARE_FOR_TEST"},"websocket":{"url":"ws://xrobo-io.qiniuapi.com/v1/ws/"}}
 2，激活后在次发送获取到token以及websocket请求的地址url！{"server_time":{"timestamp":1755659726619,"timeZone":"Asia/Shanghai","timezone_offset":480},"firmware":{"version":"1.0.0","url":"https://xrobo.qiniuapi.com/v1/ota/INVALID_FIRMWARE_FOR_TEST"},"websocket":{"url":"ws://xrobo-io.qiniuapi.com/v1/ws/","token":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJkYXRhIjoiVE9KbGFja2VVUTZjb2lVdlUweFNfT05sbjJrOUh5OUh3V1dEQnE2SWU2em1QMDNxUXgwYWZmUVFxTFpwTVpMc1pET1JoSU9fdE5YWkdtNFN6a0R6emZ6akNDUlc0NUx0X002cHd1T0QifQ.FEAncYHuoJ1i1FPVlW7IYtJbWn_cVBzLfGbDNrJsB5c"}}
-curl -v -X POST https://xrobo.qiniuapi.com/v1/ota/ \
+curl -v -X POST http://114.66.50.145:8003/xiaozhi/ota/ \
   -H "Content-Type: application/json" \
-  -H "Device-Id: 00:0c:29:34:45:0f" \
+  -H "Device-Id: d4:06:06:b6:a9:fb" \
   -H "Client-Id: webai_test" \
   -H "User-Agent: esp-box-3/1.5.6" \
   -H "Accept-Language: zh-CN" \
@@ -100,16 +100,16 @@ curl -v -X POST https://xrobo.qiniuapi.com/v1/ota/ \
       "rssi": 0,
       "channel": 0,
       "ip": "192.168.1.1",
-      "mac": "00:0c:29:34:45:0f"
+      "mac": "d4:06:06:b6:a9:fb"
     },
-    "mac_address": "00:0c:29:34:45:0f",
+    "mac_address": "d4:06:06:b6:a9:fb",
     "chip_info": { "model": 0, "cores": 0, "revision": 0, "features": 0 },
     "partition_table": [
       { "label": "", "type": 0, "subtype": 0, "address": 0, "size": 0 }
     ]
   }'
 3, 进行模拟对话，使用websocket进行连接发送
-wscat -c ws://xrobo-io.qiniuapi.com/v1/ws/ -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJkYXRhIjoiaTFzMlRmWFJNczk4N2RkakxublZIUFd5WW9iT3hxVEo2TVdndEVKbVpqY2NZb09DMkJNS29lRkVwcVEzR21zREVydVQ3U0RTN19fODBvWm5HRG41aFU3dkJmQ1F4aXBqampoYldMd18ifQ.rM2g84RswczPN38KYC2BAtQPfF1oyhjequtska3Mkz8" -H "Device-Id: 00:0c:29:34:45:0f" -H "Client-Id: webai_test"
+wscat -c ws://114.66.50.145:8000/xiaozhi/v1/ -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJkYXRhIjoicGhKNllaNE5HbU9RTWluaTloRkpUUXdEMGRBekkwSjgycW4ySmRPNzhMQURlNFFOd09rMjNNUEx0enRPMmpYWEFsMDhlSTZHY3p1STFzZVBsVm9sTEQwZVZ4NV9SS2w5cGQ5eS1uR04ifQ.aKRBzDZB1A4SBLDEz4i6u5BjOiJhAL-LXIEJ7KLsXZI" -H "Device-Id: d4:06:06:b6:a9:fb" -H "Client-Id: webai_test"
 
 4，对话通信
 alen@alen-virtual-machine:~/VisonFive2_SDK/xiaozhi-linux/sound_app$ wscat -c ws://xrobo-io.qiniuapi.com/v1/ws/ -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJkYXRhIjoiVE9KbGFja2VVUTZjb2lVdlUweFNfT05sbjJrOUh5OUh3V1dEQnE2SWU2em1QMDNxUXgwYWZmUVFxTFpwTVpMc1pET1JoSU9fdE5YWkdtNFN6a0R6emZ6akNDUlc0NUx0X002cHd1T0QifQ.FEAncYHuoJ1i1FPVlW7IYtJbWn_cVBzLfGbDNrJsB5c" -H "Device-Id: 00:0c:29:34:45:0f" -H "Client-Id: $(uuidgen)"

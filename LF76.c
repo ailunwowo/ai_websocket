@@ -20,7 +20,7 @@
 
 #define OTA_URL "https://xrobo.qiniuapi.com/v1/ota/"
 #define MAC "D4:06:06:B6:A9:FB"
-#define UUID "85bcfde7-44df-41da-b450-3bf7fdf1d4dd"
+#define UUID "webai_test"
 
 static char g_session_id[128] = {0};
 static char g_ws_token[512] = {0};
@@ -123,7 +123,6 @@ static void *opus_memory_reader_thread(void *arg) {
     
     printf("Opus音频数据大小: %u字节\n", opus_audio_data_size);
     
-    // 假设数据格式：每帧包含4字节长度（小端格式） + Opus编码数据
     size_t offset = 0;
     int frame_count = 0;
     
@@ -342,13 +341,17 @@ static int activate_and_fetch_ws() {
     headers = curl_slist_append(headers, "Activation-Version: 2");
 
     curl_easy_setopt(curl, CURLOPT_URL, OTA_URL);
+    curl_easy_setopt(curl, CURLOPT_POST, 1);
     curl_easy_setopt(curl, CURLOPT_POSTFIELDS, post_data);
     curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_memory_callback);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&chunk);
+    //curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)post_data);
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, 30L);
+    curl_easy_setopt(curl, CURLOPT_HEADER, 0);
+    curl_easy_setopt(curl, CURLOPT_VERBOSE, 1);
 
     res = curl_easy_perform(curl);
     if (res != CURLE_OK) {
@@ -560,12 +563,14 @@ static void *websocket_thread(void *arg) {
     struct lws_client_connect_info i;
     memset(&i, 0, sizeof(i));
     i.context = context;
-    i.address = cfg->host;
-    i.port = cfg->port;
+    i.address = "192.168.20.90";
+    i.port = 80;
+    // i.address =cfg->host;
+    // i.port = cfg->port;
     i.path = cfg->path;
     i.host = cfg->host;
-    i.origin = cfg->is_secure ? "https://" : "http://";
-    i.ssl_connection = cfg->is_secure ? LCCSCF_USE_SSL : 0;
+    i.origin = "http://";
+    i.ssl_connection = 0;
     i.protocol = "voice-client";
     i.pwsi = &g_ws_client;
 
@@ -657,16 +662,7 @@ int main(void) {
             lws_callback_on_writable(g_ws_client);
         }
         sleep(1);
-        
-        // 如果数据发送完成且一段时间没有活动，退出
-        static int idle_count = 0;
-        if (!g_listen_active) {
-            idle_count++;
-            if (idle_count > 40) {
-                printf("长时间无活动，退出程序\n");
-                break;
-            }
-        }
+    
     }
     
     return 0;

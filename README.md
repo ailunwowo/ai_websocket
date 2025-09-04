@@ -19,6 +19,7 @@
 1.  gcc -o opus_recorder opus_recorder.c -lasound -lopus
 2.  gcc opus_to_array.c -o opus_to_array
 3.  gcc LF76.c -o web $(pkg-config --cflags --libs libwebsockets jansson nopoll libcurl)
+4.  gcc nopoll_send_audio.c -o nopoll_send_audio $(pkg-config --cflags --libs libwebsockets jansson nopoll libcurl)
 
 #### 开发环境搭建
 本人使用的系统为Ubuntu22.04
